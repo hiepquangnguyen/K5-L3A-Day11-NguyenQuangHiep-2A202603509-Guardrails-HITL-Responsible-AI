@@ -1,5 +1,35 @@
 # Day 11 — Controlled Agent Security (2026)
 
+## Thông tin bài nộp
+
+- **Họ và tên:** Nguyễn Quang Hiệp
+- **Lớp:** K5-L3A
+- **MSSV:** `2A202603509`
+- **Model Blue (CP2–CP3):** `openrouter:liquid/lfm-3-1.7b:free` *(khóa cứng)*
+- **Model Red / Red Advance (CP4):** `openai:gpt-4o-mini`
+
+### Cách chạy nhanh (từ thư mục gốc repo)
+
+```powershell
+# 1. Cài đặt môi trường & tạo .env (không commit .env)
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+Copy-Item .env.example .env
+pip install -r requirements.txt
+
+# 2. Chạy từng Checkpoint
+python src/main.py --part 2   # CP2: Input & Output Guardrails (Blue)
+python src/main.py --part 3   # CP3: Defense Pipeline → outputs/results.json, audit_log.json, metrics.json
+python src/main.py --part 4   # CP4: Red Team → outputs/attack_results.json, unsafe/guards logs
+
+# 3. Tự kiểm tra & sinh báo cáo tự động (CP5)
+pytest tests/smoke -q
+pytest tests/public -q
+python scripts/grade.py --submission-dir . --out outputs/grade_report.json
+```
+
+---
+
 > 👤 **Hình thức:** bài tập **cá nhân** (1 người / 1 MSSV).  
 > 🎯 **Mục tiêu:** đóng vai **Blue Team** để học cách xây Guardrails phòng thủ, rồi đóng vai **Red Team** để tấn công agent **Red** hoặc **Red Advance**.  
 > ✅ Làm theo **Checkpoint 1 → 5** trong [`CHECKPOINTS.md`](CHECKPOINTS.md) · nộp theo [`SUBMISSION.md`](SUBMISSION.md).

@@ -36,17 +36,23 @@ def content_filter(response: str) -> dict:
     Returns:
         dict with 'safe', 'issues', and 'redacted' keys
     """
+    response = response or ""
     issues = []
     redacted = response
 
-    # PII patterns to check
+    # PII and secret patterns to detect and redact
     PII_PATTERNS = {
-        # TODO: Add regex patterns for:
-        # - VN phone number: r"0\d{9,10}"
-        # - Email: r"[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}"
-        # - National ID (CMND/CCCD): r"\b\d{9}\b|\b\d{12}\b"
-        # - API key pattern: r"sk-[a-zA-Z0-9-]+"
-        # - Password pattern: r"password\s*[:=]\s*\S+"
+        "api_key": r"\bsk-[a-zA-Z0-9_-]{4,}",
+        "db_host": r"db\.vinbank\.internal(?::\d+)?",
+        "password": (
+            r"(?:(?:password|mật\s*khẩu)\s*[:=]\s*[^\s,;.]+|"
+            r"(?:admin\s+)?(?:password|mật\s*khẩu)\s+(?:is|là)\s+"
+            r"(?!(?:required|encrypted|protected|confidential|private|reset|changed|not|never)\b)[^\s,;.]+|"
+            r"\badmin123\b)"
+        ),
+        "email": r"[\w.-]+@[\w.-]+\.[a-zA-Z]{2,}",
+        "phone": r"(?<!\d)0\d{9,10}(?!\d)",
+        "national_id": r"(?<!\d)(?:\d{9}|\d{12})(?!\d)",
     }
 
     for name, pattern in PII_PATTERNS.items():
@@ -149,6 +155,7 @@ class OutputGuardrailPlugin(base_plugin.BasePlugin):
         self.blocked_count = 0
         self.redacted_count = 0
         self.total_count = 0
+        self.last_action: str | None = None
 
     def _extract_text(self, llm_response) -> str:
         """Extract text from LLM response."""
@@ -167,21 +174,37 @@ class OutputGuardrailPlugin(base_plugin.BasePlugin):
     ):
         """Check LLM response before sending to user."""
         self.total_count += 1
+        self.last_action = None
 
         response_text = self._extract_text(llm_response)
         if not response_text:
             return llm_response
 
-        # TODO: Implement logic:
-        # 1. Call content_filter(response_text)
-        #    - If issues found: replace llm_response.content with redacted version
-        #    - Increment self.redacted_count
-        # 2. If use_llm_judge: call llm_safety_check(response_text)
-        #    - If unsafe: replace llm_response.content with a safe message
-        #    - Increment self.blocked_count
-        # 3. Return llm_response (possibly modified)
+        filtered = content_filter(response_text)
+        if not filtered["safe"]:
+            self.redacted_count += 1
+            self.last_action = "redacted"
+            response_text = filtered["redacted"]
+            llm_response.content = types.Content(
+                role="model",
+                parts=[types.Part.from_text(text=response_text)],
+            )
 
-        return llm_response  # TODO: modify if needed
+        if self.use_llm_judge:
+            judge_result = await llm_safety_check(response_text)
+            if not judge_result["safe"]:
+                self.blocked_count += 1
+                self.last_action = "blocked"
+                safe_message = (
+                    "I cannot share that response for security reasons. "
+                    "How else can I help with your VinBank banking needs?"
+                )
+                llm_response.content = types.Content(
+                    role="model",
+                    parts=[types.Part.from_text(text=safe_message)],
+                )
+
+        return llm_response
 
 
 # ============================================================
